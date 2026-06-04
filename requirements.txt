@@ -1,0 +1,21 @@
+# 大创项目文献政策统计分析工具 - 依赖包清单
+# 安装命令：pip install -r requirements.txt
+
+# 核心框架
+PyQt5>=5.15.0
+
+# 大模型API
+requests>=2.28.0
+
+# 文件解析
+python-docx>=0.8.11
+PyMuPDF>=1.23.0  # 用于PDF转图片（原名fitz）
+
+# 数据处理
+openpyxl>=3.1.0
+
+# 加密存储
+cryptography>=41.0.0
+
+# 百度OCR依赖
+# requests 已在上面列出

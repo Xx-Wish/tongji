@@ -1,0 +1,17 @@
+api:
+  base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  max_retries: 3
+  model: qwen-plus
+  request_interval: 0.10000000000000003
+  timeout: 120
+concurrency:
+  analyze_workers: 3
+  extract_workers: 2
+  parse_workers: 3
+output:
+  dir: ./batch_output
+  format: jsonl
+  progress_file: progress.json
+processing:
+  chunk_overlap: 200
+  chunk_size: 6000
