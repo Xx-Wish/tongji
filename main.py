@@ -2,6 +2,7 @@
 import sys
 import json
 import re
+from datetime import datetime
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                              QPushButton, QLabel, QLineEdit, QTextEdit, QTabWidget, 
                              QFileDialog, QMessageBox, QComboBox, QProgressBar, QGroupBox,
@@ -16,6 +17,7 @@ from data_auditor import DataAuditor
 from exporter import Exporter
 from web_scraper import WebScraper, PaperDataExtractor, SmartDataExtractor, DeclarationDataExtractor
 from logger import get_logger
+from history_manager import HistoryManager
 
 
 # 初始化日志
@@ -444,6 +446,8 @@ class MainWindow(QMainWindow):
         self.reference_text = ""
         self.project_info = None
         self.web_scraper = WebScraper()
+        self.history_manager = HistoryManager()
+        self._history_start_time = None
         self.init_ui()
         self.apply_theme()
         self.load_config()
@@ -518,7 +522,8 @@ class MainWindow(QMainWindow):
         self.setup_config_tab(tab_widget)
         self.setup_main_tab(tab_widget)
         self.setup_result_tab(tab_widget)
-        
+        self.setup_history_tab(tab_widget)
+
         main_layout.addWidget(tab_widget)
 
     def setup_config_tab(self, tab_widget):
@@ -1268,6 +1273,17 @@ class MainWindow(QMainWindow):
         self.project_info_text.setHtml(info_html)
 
     def generate_data(self):
+        self._history_start_time = datetime.now()
+        self._history_model_type = self._get_model_key()
+        self._history_project_title = self.title_edit.text().strip()
+        self._history_files = []
+        pf = self.project_file_label.text()
+        if pf and pf != "未选择文件":
+            self._history_files.append(pf)
+        rf = self.ref_file_label.text()
+        if rf and rf != "未选择文件":
+            self._history_files.append(rf)
+
         model_type = self._get_model_key()
         api_key = self.api_key_edit.text()
         title = self.title_edit.text().strip()
@@ -1304,9 +1320,45 @@ class MainWindow(QMainWindow):
     def on_finished(self, data):
         self.current_data = data
         self.display_result(data)
+
+        # 保存历史记录
+        try:
+            duration = 0
+            if self._history_start_time:
+                duration = (datetime.now() - self._history_start_time).total_seconds()
+            self.history_manager.add_record(
+                project_title=getattr(self, '_history_project_title', ''),
+                model_type=getattr(self, '_history_model_type', ''),
+                files_imported=getattr(self, '_history_files', []),
+                result_data=data,
+                status='success',
+                duration_sec=duration
+            )
+            logger.info("历史记录已保存（成功）")
+        except Exception as e:
+            logger.warning(f"保存历史记录失败: {e}")
+
         QMessageBox.information(self, "完成", "数据生成完成！已通过四维度审核！")
 
     def on_error(self, error_msg):
+        # 保存失败的历史记录
+        try:
+            duration = 0
+            if self._history_start_time:
+                duration = (datetime.now() - self._history_start_time).total_seconds()
+            self.history_manager.add_record(
+                project_title=getattr(self, '_history_project_title', ''),
+                model_type=getattr(self, '_history_model_type', ''),
+                files_imported=getattr(self, '_history_files', []),
+                result_data={},
+                status='failed',
+                error_message=str(error_msg)[:500],
+                duration_sec=duration
+            )
+            logger.info("历史记录已保存（失败）")
+        except Exception as e:
+            logger.warning(f"保存失败历史记录失败: {e}")
+
         QMessageBox.critical(self, "错误", f"生成失败:\n{error_msg}")
 
     def display_result(self, data):
@@ -1433,6 +1485,314 @@ class MainWindow(QMainWindow):
                 QMessageBox.information(self, "成功", "导出Word成功！")
             except Exception as e:
                 QMessageBox.warning(self, "错误", f"导出失败: {str(e)}")
+
+
+    # ===================== 历史记录标签页 =====================
+
+    def setup_history_tab(self, tab_widget):
+        """创建「历史记录」标签页"""
+        history_scroll = QScrollArea()
+        history_scroll.setWidgetResizable(True)
+        history_scroll.setFrameShape(QScrollArea.NoFrame)
+
+        history_tab = QWidget()
+        layout = QVBoxLayout(history_tab)
+        layout.setSpacing(15)
+        layout.setContentsMargins(30, 30, 30, 30)
+
+        # 标题
+        title = QLabel("📋 历史记录")
+        title.setFont(QFont("Microsoft YaHei UI", 18, QFont.Bold))
+        title.setStyleSheet("color: #2C3E50;")
+        layout.addWidget(title)
+
+        subtitle = QLabel("查看历次数据生成记录，支持查看详情、重新导出结果")
+        subtitle.setFont(QFont("Microsoft YaHei UI", 11))
+        subtitle.setStyleSheet("color: #7F8C8D; margin-bottom: 10px;")
+        layout.addWidget(subtitle)
+
+        # 统计信息区
+        stats_group = QGroupBox("使用统计")
+        stats_group.setFont(QFont("Microsoft YaHei UI", 12, QFont.Bold))
+        stats_layout = QHBoxLayout(stats_group)
+        stats_layout.setSpacing(20)
+        stats_layout.setContentsMargins(20, 20, 20, 20)
+
+        self.history_stats_labels = {}
+        for key, label in [('total', '总生成次数'), ('success', '成功'), ('failed', '失败'), ('most_used', '最常使用模型'), ('last_used', '最近使用')]:
+            vbox = QVBoxLayout()
+            num_label = QLabel("0")
+            num_label.setFont(QFont("Microsoft YaHei UI", 16, QFont.Bold))
+            num_label.setStyleSheet("color: #4A90E2;")
+            num_label.setAlignment(Qt.AlignCenter)
+            desc_label = QLabel(label)
+            desc_label.setFont(QFont("Microsoft YaHei UI", 10))
+            desc_label.setStyleSheet("color: #7F8C8D;")
+            desc_label.setAlignment(Qt.AlignCenter)
+            vbox.addWidget(num_label)
+            vbox.addWidget(desc_label)
+            stats_layout.addLayout(vbox)
+            self.history_stats_labels[key] = num_label
+
+        layout.addWidget(stats_group)
+
+        # 按钮区
+        btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(10)
+
+        refresh_btn = ModernButton("🔄 刷新列表", "#27AE60", "#229954")
+        refresh_btn.setMaximumWidth(130)
+        refresh_btn.clicked.connect(self._refresh_history_list)
+        btn_layout.addWidget(refresh_btn)
+
+        view_btn = ModernButton("📄 查看详情", "#4A90E2", "#357ABD")
+        view_btn.setMaximumWidth(130)
+        view_btn.clicked.connect(self._view_history_detail)
+        btn_layout.addWidget(view_btn)
+
+        export_btn = ModernButton("📊 导出结果", "#F39C12", "#E67E22")
+        export_btn.setMaximumWidth(130)
+        export_btn.clicked.connect(self._export_history_result)
+        btn_layout.addWidget(export_btn)
+
+        delete_btn = ModernButton("🗑️ 删除记录", "#E74C3C", "#C0392B")
+        delete_btn.setMaximumWidth(130)
+        delete_btn.clicked.connect(self._delete_history_record)
+        btn_layout.addWidget(delete_btn)
+
+        btn_layout.addStretch()
+
+        clear_btn = ModernButton("🧹 清空所有", "#95A5A6", "#7F8C8D")
+        clear_btn.setMaximumWidth(130)
+        clear_btn.clicked.connect(self._clear_all_history)
+        btn_layout.addWidget(clear_btn)
+
+        layout.addLayout(btn_layout)
+
+        # 列表和详情分割区
+        splitter = QSplitter(Qt.Horizontal)
+
+        # 左侧：历史记录列表
+        list_widget = QWidget()
+        list_layout = QVBoxLayout(list_widget)
+        list_layout.setContentsMargins(0, 0, 0, 0)
+        list_label = QLabel("历史记录列表")
+        list_label.setFont(QFont("Microsoft YaHei UI", 12, QFont.Bold))
+        list_label.setStyleSheet("color: #2C3E50;")
+        list_layout.addWidget(list_label)
+
+        self.history_list = QListWidget()
+        self.history_list.setStyleSheet("""
+            QListWidget {
+                border: 1px solid #DDDDDD;
+                border-radius: 8px;
+                background: white;
+                font-size: 13px;
+            }
+            QListWidget::item {
+                padding: 10px 15px;
+                border-bottom: 1px solid #F0F0F0;
+            }
+            QListWidget::item:selected {
+                background: #EBF5FB;
+                color: #2C3E50;
+            }
+        """)
+        self.history_list.itemClicked.connect(self._on_history_item_selected)
+        list_layout.addWidget(self.history_list)
+        splitter.addWidget(list_widget)
+
+        # 右侧：详情展示
+        detail_widget = QWidget()
+        detail_layout = QVBoxLayout(detail_widget)
+        detail_layout.setContentsMargins(0, 0, 0, 0)
+        detail_label = QLabel("记录详情")
+        detail_label.setFont(QFont("Microsoft YaHei UI", 12, QFont.Bold))
+        detail_label.setStyleSheet("color: #2C3E50;")
+        detail_layout.addWidget(detail_label)
+
+        self.history_detail_text = QTextEdit()
+        self.history_detail_text.setReadOnly(True)
+        self.history_detail_text.setStyleSheet("""
+            QTextEdit {
+                border: 1px solid #DDDDDD;
+                border-radius: 8px;
+                background: #F8F9FA;
+                font-size: 13px;
+                padding: 10px;
+            }
+        """)
+        detail_layout.addWidget(self.history_detail_text)
+        splitter.addWidget(detail_widget)
+
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 2)
+        layout.addWidget(splitter)
+
+        history_scroll.setWidget(history_tab)
+        tab_widget.addTab(history_scroll, "📋 历史记录")
+
+        # 初始加载
+        self._refresh_history_list()
+        self._refresh_history_stats()
+
+    def _refresh_history_stats(self):
+        """刷新统计信息"""
+        try:
+            stats = self.history_manager.get_stats()
+            self.history_stats_labels['total'].setText(str(stats['total']))
+            self.history_stats_labels['success'].setText(str(stats['success']))
+            self.history_stats_labels['failed'].setText(str(stats['failed']))
+            self.history_stats_labels['most_used'].setText(stats['most_used_model'])
+            self.history_stats_labels['last_used'].setText(stats['last_used'])
+        except Exception as e:
+            logger.warning(f"刷新统计失败: {e}")
+
+    def _refresh_history_list(self):
+        """刷新历史记录列表"""
+        self.history_list.clear()
+        self.history_detail_text.clear()
+        try:
+            records = self.history_manager.get_all_records()
+            for rec in records:
+                status_icon = "✅" if rec['status'] == 'success' else "❌"
+                title = rec['project_title'] or "（无标题）"
+                time_str = rec['created_at']
+                summary = self.history_manager.parse_result_summary(rec.get('result_summary', '{}'))
+                summary_str = " | ".join([f"{k[:8]}…:{v}条" for k, v in list(summary.items())[:2]]) if summary else "无数据"
+                item_text = f"{status_icon} [{time_str}] {title}\n    📊 {summary_str}"
+                self.history_list.addItem(item_text)
+                # 将 record id 存在 item 的 data 中
+                self.history_list.item(self.history_list.count() - 1).setData(Qt.UserRole, rec['id'])
+        except Exception as e:
+            logger.warning(f"刷新历史列表失败: {e}")
+            QMessageBox.warning(self, "错误", f"加载历史记录失败:\n{e}")
+
+    def _on_history_item_selected(self, item):
+        """选中某条历史记录，展示详情"""
+        record_id = item.data(Qt.UserRole)
+        try:
+            rec = self.history_manager.get_record_by_id(record_id)
+            if not rec:
+                self.history_detail_text.setHtml("<p style='color:#E74C3C;'>未找到该记录</p>")
+                return
+
+            status_text = "✅ 成功" if rec['status'] == 'success' else "❌ 失败"
+            files = self.history_manager.parse_files(rec.get('files_imported', '[]'))
+            files_str = "<br>".join(files) if files else "（无）"
+            summary = self.history_manager.parse_result_summary(rec.get('result_summary', '{}'))
+
+            detail_html = f"""
+            <div style='font-family: "Microsoft YaHei UI", sans-serif;'>
+                <h2 style='color: #2C3E50;'>{status_text} 生成记录</h2>
+                <p><b>📅 时间：</b>{rec['created_at']}</p>
+                <p><b>📌 项目标题：</b>{rec['project_title'] or "（无）"}</p>
+                <p><b>🤖 使用模型：</b>{rec['model_type']}</p>
+                <p><b>📁 导入文件：</b><br>{files_str}</p>
+                <p><b>⏱️ 耗时：</b>{rec['duration_sec']:.1f} 秒</p>
+            """
+
+            if rec['status'] == 'failed':
+                detail_html += f"<p><b>❌ 错误信息：</b><span style='color:#E74C3C;'>{rec.get('error_message', '')}</span></p>"
+
+            if summary:
+                detail_html += "<h3 style='color: #4A90E2; margin-top:15px;'>📊 生成数据摘要</h3><ul>"
+                for key, count in summary.items():
+                    detail_html += f"<li><b>{key}</b>：{count} 条数据</li>"
+                detail_html += "</ul>"
+
+            detail_html += "</div>"
+            self.history_detail_text.setHtml(detail_html)
+
+        except Exception as e:
+            self.history_detail_text.setHtml(f"<p style='color:#E74C3C;'>加载详情失败: {e}</p>")
+
+    def _view_history_detail(self):
+        """查看选中记录的完整结果数据"""
+        item = self.history_list.currentItem()
+        if not item:
+            QMessageBox.warning(self, "提示", "请先选择一条历史记录！")
+            return
+        record_id = item.data(Qt.UserRole)
+        try:
+            rec = self.history_manager.get_record_by_id(record_id)
+            if not rec:
+                QMessageBox.warning(self, "提示", "未找到该记录！")
+                return
+            result_data = self.history_manager.parse_result_data(rec.get('result_data', '{}'))
+            if not result_data:
+                QMessageBox.information(self, "详情", "该记录没有生成的结果数据（可能生成失败）")
+                return
+
+            # 在结果标签页展示这些数据
+            self.current_data = result_data
+            self.display_result(result_data)
+            QMessageBox.information(self, "提示", "已将历史结果加载到「结果展示 & 导出」标签页，可前往查看或导出！")
+
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"查看详情失败:\n{e}")
+
+    def _export_history_result(self):
+        """将选中记录的结果导出为 Excel/Word"""
+        item = self.history_list.currentItem()
+        if not item:
+            QMessageBox.warning(self, "提示", "请先选择一条历史记录！")
+            return
+        record_id = item.data(Qt.UserRole)
+        try:
+            rec = self.history_manager.get_record_by_id(record_id)
+            if not rec:
+                QMessageBox.warning(self, "提示", "未找到该记录！")
+                return
+            result_data = self.history_manager.parse_result_data(rec.get('result_data', '{}'))
+            if not result_data:
+                QMessageBox.warning(self, "提示", "该记录没有可导出的结果数据！")
+                return
+
+            # 临时设置 current_data 并调用导出
+            self.current_data = result_data
+            self.export_excel()
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"导出失败:\n{e}")
+
+    def _delete_history_record(self):
+        """删除选中的历史记录"""
+        item = self.history_list.currentItem()
+        if not item:
+            QMessageBox.warning(self, "提示", "请先选择一条历史记录！")
+            return
+        record_id = item.data(Qt.UserRole)
+        reply = QMessageBox.question(
+            self, "确认删除",
+            "确定要删除这条历史记录吗？\n此操作不可撤销。",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            try:
+                self.history_manager.delete_record(record_id)
+                self._refresh_history_list()
+                self._refresh_history_stats()
+                self.history_detail_text.clear()
+                QMessageBox.information(self, "成功", "记录已删除！")
+            except Exception as e:
+                QMessageBox.critical(self, "错误", f"删除失败:\n{e}")
+
+    def _clear_all_history(self):
+        """清空所有历史记录"""
+        reply = QMessageBox.question(
+            self, "确认清空",
+            "确定要清空所有历史记录吗？\n此操作不可撤销！",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            try:
+                count = self.history_manager.clear_all()
+                self._refresh_history_list()
+                self._refresh_history_stats()
+                self.history_detail_text.clear()
+                QMessageBox.information(self, "成功", f"已清空 {count} 条历史记录！")
+            except Exception as e:
+                QMessageBox.critical(self, "错误", f"清空失败:\n{e}")
 
 
 if __name__ == "__main__":
