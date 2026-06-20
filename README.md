@@ -49,10 +49,7 @@ tongji/
 ├── README.md            # 本文件
 ├── test_api.py          # API 测试脚本
 ├── test_aliyun_api.py   # 阿里云 API 测试脚本
-├── test_encoding.py     # 编码测试脚本
-└── data/                # 协作数据模块
-    ├── progress.py      # 成员进度追踪
-    └── changelog.py     # 更新日志记录
+└── test_encoding.py     # 编码测试脚本
 ```
 
 ---
@@ -160,9 +157,9 @@ python build.py
 |------|--------|---------|
 | 组长 | [Xx-Wish](https://github.com/Xx-Wish) | 创建仓库、搭建框架、管理 Issue 与 PR |
 | 组员 A | [yxy-code-ux](https://github.com/yxy-code-ux) | 完善 README 文档与项目介绍 |
-| 组员 B | [lighter888](https://github.com/lighter888) | 制作日志系统 |
-| 组员 C | [Firefly0688](https://github.com/Firefly0688) | 制作 API 本地存储功能 |
-| 组员 D | [xuanxuanxuan777](https://github.com/xuanxuanxuan777) | 制作历史记录功能 |
+| 组员 B | — | 制作日志系统 |
+| 组员 C | — | 制作 API 本地存储功能 |
+| 组员 D | — | 制作历史记录功能 |
 
 ---
 
@@ -218,4 +215,3 @@ python build.py
 |------|------|------|
 | v0.1 | 2026-06 | 组长创建初始项目，搭建 PyQt5 基础框架 |
 | v0.2 | 2026-06 | 组员 A 完善 README 文档，补充详细说明 |
-| v0.3 | 2026-06 | 组员 D 完善成员合作信息，补充全部成员 GitHub 账户，创建 data/progress.py 与 data/changelog.py |
