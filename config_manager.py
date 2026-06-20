@@ -40,7 +40,7 @@ class ConfigManager:
     def save_config(self, config):
         encrypted_config = {}
         for key, value in config.items():
-            if key in ["doubao_api_key", "tongyi_api_key", "baidu_api_key", "baidu_secret_key"]:
+            if key in ["openrouter_api_key", "doubao_api_key", "tongyi_api_key", "baidu_api_key", "baidu_secret_key"]:
                 encrypted_config[key] = self.encrypt(value)
             else:
                 encrypted_config[key] = value
@@ -57,7 +57,7 @@ class ConfigManager:
         
         config = {}
         for key, value in encrypted_config.items():
-            if key in ["doubao_api_key", "tongyi_api_key", "baidu_api_key", "baidu_secret_key"]:
+            if key in ["openrouter_api_key", "doubao_api_key", "tongyi_api_key", "baidu_api_key", "baidu_secret_key"]:
                 try:
                     config[key] = self.decrypt(value)
                 except:

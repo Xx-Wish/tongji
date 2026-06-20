@@ -573,6 +573,8 @@ class MainWindow(QMainWindow):
         model_label2.setStyleSheet("color: #4A90E2; padding: 8px 0;")
         model_layout.addRow(model_label2, self.api_key_edit)
 
+        self.model_combo.currentIndexChanged.connect(self._on_model_changed)
+
         save_btn = ModernButton("保存配置", "#27AE60", "#229954")
         save_btn.clicked.connect(self.save_config)
         model_layout.addRow(save_btn)
@@ -983,6 +985,12 @@ class MainWindow(QMainWindow):
             return "doubao"
         else:
             return "tongyi"
+
+    def _on_model_changed(self):
+        """切换模型时自动更新 API Key 输入框为已保存的值"""
+        model_type = self._get_model_key()
+        saved_key = self.config_manager.get_api_key(model_type)
+        self.api_key_edit.setText(saved_key)
 
     def save_config(self):
         model_type = self._get_model_key()
